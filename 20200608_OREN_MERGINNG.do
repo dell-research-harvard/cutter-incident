@@ -5,7 +5,21 @@ cd "C:\Users\Oren_PC\Dropbox\BLISS\raw_data"
 import delimited ca_newspaper_data.csv, varnames(1) clear
 recast str300 city state title_normal 
 replace title_normal = subinstr(title_normal, "-", " ",.)
+replace title_normal = subinstr(title_normal, ",", "",.)
+replace title_normal = subinstr(title_normal, "'", "",.)
+replace title_normal = subinstr(title_normal, "/", "",.)
 
+*** Get rid of duplicates in state names
+split state, p("]")
+split state1, p(",")
+replace state = state11 + "]"
+drop state1*
+*** Get rid of duplicates in city names
+split city, p("]")
+split city1, p(",")
+replace city = city11 + "]"
+drop city1*
+keep city state title_normal
 save ca_newspaper_data.dta, replace
 
 *-------- Clean na_papers_50_72 and merge -------*
@@ -46,5 +60,9 @@ rename formatted_paper title_normal
 
 *** merge by city, state and title
 merge 1:m city state title_normal using ca_newspaper_data.dta
-keep title title_normal
+
+***Check which state has the most unmerged obs
+keep if _merge==1
+keep city state title_normal
+tab state
 compress
