@@ -3,7 +3,9 @@ cd "C:\Users\Oren_PC\Dropbox\BLISS\raw_data"
 
 *-------- Prepare LOC data for merging -------*
 import delimited ca_newspaper_data.csv, varnames(1) clear
-recast str2045 city state title_normal 
+recast str300 city state title_normal 
+replace title_normal = subinstr(title_normal, "-", " ",.)
+
 save ca_newspaper_data.dta, replace
 
 *-------- Clean na_papers_50_72 and merge -------*
@@ -24,6 +26,8 @@ replace formatted_paper = formatted_paper + "."
 
 *** State Names
 g formatted_state = proper(state)
+replace formatted_state = subinstr(formatted_state, "-", " ",.)
+
 replace formatted_state = "['" + formatted_state + "']"
 
 *** City Names
@@ -42,4 +46,5 @@ rename formatted_paper title_normal
 
 *** merge by city, state and title
 merge 1:m city state title_normal using ca_newspaper_data.dta
-
+keep title title_normal
+compress
