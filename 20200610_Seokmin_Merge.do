@@ -76,38 +76,28 @@ save "/Users/seokminoh/Desktop/Dell_2/ca_newspaper_data.dta_V3", replace
 
 // this part needs more work 
 use "/Users/seokminoh/Desktop/Dell_2/ca_newspaper_data.dta_V3", replace
-rename state_proper state_p
-rename  city_proper city_p 
-
-gen id2 = _n
 set more off
 
-keep state_proper* id2 state_p paper_proper 
-//from https://www.stata.com/statalist/archive/2008-10/msg00888.html
-d,s
-local j = r(k) - 1
-forvalues i = 1/22 {
-preserve
-  rename state_proper`i' state_proper
-  gen j = `i'
-  tempfile state_proper`i'
-  save `state_proper`i''
-  restore
-}
-use `state_proper1', clear
-forvalues i = 2/`j' {
-  append using `state_proper`i''
-}
+//rename state_proper state_p
+//rename  city_proper city_p 
 
-//check which ones are missing variables
-forvalues i = 2(1)22 { 
-count if state_proper`i'
-}
+rename state_proper state_proper2
+rename city_proper city_proper1
+gen id2 = _n
 
-//merge the files and see where you have inconsistencies - 723 matched
-/*
-use "/Users/seokminoh/Desktop/Dell_2/ca_newspaper_data.dta_V2", clear 
-merge m:1 paper_proper city_proper state_proper using  "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta_V2"
-*/
-//view the ones that did not merge
-sort paper_proper city_proper state_proper
+forvalues i =10/22{
+drop state_proper`i'
+drop city_proper`i'
+}
+//create a long file that is short enough (709 unmatched)
+reshape long state_proper city_proper, i(id2) j(instance)
+save "/Users/seokminoh/Desktop/Dell_2/ca_newspaper_data.dta_long_1_9", replace
+merge m:1 paper_proper city_proper state_proper using "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta_V2"
+
+save "/Users/seokminoh/Desktop/Dell_2/Merged_reshaped_1_10",replace
+keep if _merge == 3 
+save "/Users/seokminoh/Desktop/Dell_2/Merged_reshaped_1_10_for_append"
+
+//Now specifically look at the ones that still did not match
+use "/Users/seokminoh/Desktop/Dell_2/Merged_reshaped_1_10",replace
+rename  
