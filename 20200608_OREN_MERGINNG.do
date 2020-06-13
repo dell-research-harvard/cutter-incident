@@ -9,7 +9,7 @@ import delimited ca_newspaper_data.csv, varnames(1) clear
 rename state original_state
 g state = original_state
 rename city original_city
-g city = original_city
+g city = strproper(original_city)
 rename title_normal original_title_normal
 g title_normal = original_title_normal
 rename alt_title original_alt_title
@@ -48,6 +48,9 @@ replace alt_title = lower(alt_title)
 
 *** Recast to enable later merging
 recast str300 title_normal alt_title
+format %24s state city title_normal alt_title
+*** Gen id for fuzzy merging
+gen id1 = _n
 save ca_newspaper_data.dta, replace
 
 *----------- 1. merge on title_normal -----------*
@@ -169,9 +172,64 @@ keep city state alt_title
 save unmatched_by_alt&normal.dta, replace
 
 
+*------------ 5. Fuzzy merge on title_normal, required perfect match on city & state and min score of 0.99
+clear all
+use unmatched_by_alt&normal.dta, clear
+
+gen id2 = _n
+rename alt_title title_normal
+replace title_normal = title_normal + "."
+reclink city state title_normal using ca_newspaper_data.dta , idmaster(id2) idusing(id1) gen(matching) required(city state)  minscore(.99)
+format %24s state city title_normal 
+* Keep unmatched
+keep if matching==.
+keep state city title_normal
+save unmatched_first_fuzzy.dta, replace
 
 
-*------------ 5. NOT DONE YET
+*------------ 6. Fuzzy merge on alt_title, required perfect match on city & state and min score of 0.99
+clear all
+use unmatched_first_fuzzy.dta, clear
+
+gen id2 = _n
+rename title_normal alt_title
+** Remove dots since alt_title in ca_newspaper doesn't have dots
+replace alt_title = subinstr(alt_title, ".", "",.)
+
+reclink city state alt_title using ca_newspaper_data.dta , idmaster(id2) idusing(id1) gen(matching) required(city state)  minscore(.99)
+format %24s state city alt_title 
+* Keep unmatched
+keep if matching==.
+keep state city alt_title
+save unmatched_second_fuzzy.dta, replace
+
+
+
+
+
+
+
+
+
+
+
+*------------  7. NOT DONE YET
+clear all
+use unmatched_second_fuzzy.dta, clear
+gen id2 = _n
+rename alt_title title_normal
+replace title_normal = title_normal + "."
+reclink state title_normal using ca_newspaper_data.dta , idmaster(id2) idusing(id1) gen(matching) required(state)  minscore(.99)
+format %24s state city title_normal 
+
+* Keep only unperfect unmatched
+keep if matching!=1
+keep city original_city
+keep state city title_normal
+save unmatched_first_fuzzy.dta, replace
+help reclink
+
+
 clear all
 use unmatched_by_alt&normal.dta, clear
 
