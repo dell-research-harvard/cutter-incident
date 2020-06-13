@@ -1,5 +1,6 @@
 //06/08/2020
 ssc install distinct
+ssc install egenmore
 //first import the master file 
 /*
 import delimited "/Users/seokminoh/Downloads/ca_newspaper_data.csv"
@@ -10,6 +11,32 @@ import delimited "/Users/seokminoh/Desktop/Dell/na_papers_50_72.csv", varnames(1
 save "/Users/seokminoh/Desktop/Dell/na_papers_50_72.dta", replace
 */
 //create a copy of the variable
+use "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta", clear
+gen state_proper = lower(state)
+gen city_proper = lower(city)
+//this gets rid of all the hyphens
+replace city_proper = subinstr(city_proper, "-"," " , .)
+
+
+//get rid of blank spaces for later merge
+replace state_proper = subinstr(state_proper," ","",.)
+replace city_proper = subinstr(city_proper," ","",.)
+
+//try to apply a similar method for the paper variable
+gen paper_proper = paper 
+//get rid of all the hyphens
+replace paper_proper = subinstr(paper_proper, "-","" , .)
+replace paper_proper = subinstr(paper_proper," ","",.)
+replace paper_proper = lower(paper_proper)
+
+//check if the paper names are unique, which it is 
+distinct paper_proper city_proper state_proper
+gen number = _n
+keep if number < 1118
+
+//
+save "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta_V1",replace
+
 //convert the city and state variables such that only the first letters are capitalized
 use "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta", clear
 gen state_proper = lower(state)
@@ -29,13 +56,14 @@ replace city_proper = subinstr(city_proper," ","",.)
 gen paper_proper = paper 
 //get rid of all the hyphens
 replace paper_proper = subinstr(paper_proper, "-","" , .)
-replace paper_proper =  paper_proper
 replace paper_proper = subinstr(paper_proper," ","",.)
 replace paper_proper = lower(paper_proper)
+
 //check if the paper names are unique, which it is 
 distinct paper_proper city_proper state_proper
 gen number = _n
 keep if number < 1118
+
 //manually change two things because they are distinct but become same under the lower case and getting rid of - function
 duplicates tag paper_proper state_proper city_proper, gen(dup)
 //IMPORTANT I am renaming le-mars back to le-mars and then manually adding that later
@@ -211,3 +239,74 @@ save "/Users/seokminoh/Desktop/Dell_2/To_Append_1_5_cs_same2",replace
 keep if _merge == 2 
 rename _merge _merge1_5_cs_same2
 save "/Users/seokminoh/Desktop/Dell_2/To_Merge_1_5_cs_same2",replace
+
+//use for merge later
+use  "/Users/seokminoh/Desktop/Dell_2/Merge_2_Append_1_5_cs_same", replace
+
+merge m:1 paper_proper city_proper state_proper using "/Users/seokminoh/Desktop/Dell_2/Merge_2_Append_1_5"
+drop if paper_proper == ""
+//keep if _merge == 1 
+save "/Users/seokminoh/Desktop/Dell_2/Merge_2_Append_1_5_for_citydrop",replace
+keep if _merge == 2 
+save "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72_m2.dta", replace
+
+//use same format 
+
+use "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72_m2.dta", clear
+drop _merge*
+gen city_properx = lower(city)
+//get rid of "-" even if we do the reclink for now 
+replace city_properx = subinstr(city, "-","" , .)
+
+
+gen cityinpaper = strpos(paper_proper,city_properx)
+
+replace paper_proper = subinstr(paper_proper,city_properx, "", 1) if cityinpaper == 1
+
+//check if the paper names are unique, which it is 
+distinct paper_proper city_proper state_proper
+duplicates tag paper_proper state_proper city_proper, gen(dup6)
+replace paper_proper = city+paper_proper if dup6>0 & cityinpaper > 0
+
+save "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta_V2_reclink_2_formerge_nocity",replace
+
+use "/Users/seokminoh/Desktop/Dell_2/Merge_2_Append_1_5_for_citydrop",replace
+drop _merge*
+merge m:1 paper_proper city_proper state_proper using  "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta_V2_reclink_2_formerge_nocity"
+
+save "/Users/seokminoh/Desktop/Dell_2/for_reclink", replace
+
+//reclink time
+use "/Users/seokminoh/Desktop/Dell_2/for_reclink", replace
+keep if _merge == 1 
+gen id3 = _n
+save "/Users/seokminoh/Desktop/Dell_2/for_reclink2", replace
+use "/Users/seokminoh/Desktop/Dell_2/for_reclink2", replace
+drop _merge
+egen S = sieve(paper_proper), keep(alphabetic space)
+rename paper_proper S1
+rename S paper_proper
+drop if paper_proper ==""
+replace state_proper = substr(state_proper, 3, .)
+replace state_proper = subinstr(state_proper, "']", "",.) 
+
+replace city_proper = substr(city_proper, 3, .)
+replace city_proper = subinstr(city_proper, "']", "",.) 
+save   "/Users/seokminoh/Desktop/Dell_2/for_reclink", replace
+replace state_proper = subinstr(state_proper , "(", "", .)
+replace state_proper = subinstr(state_proper , ")", "", .)
+replace city_proper = subinstr(city_proper , "(", "", .)
+replace city_proper = subinstr(city_proper , ")", "", .)
+replace state_proper = subinstr(state_proper , "[", "", .)
+replace state_proper = subinstr(state_proper , "]", "", .)
+replace city_proper = subinstr(city_proper , "]", "", .)
+replace city_proper = subinstr(city_proper , "]", "", .)
+replace state_proper = subinstr(state_proper , "", "", .)
+replace state_proper = subinstr(state_proper , "", "", .)
+replace city_proper = subinstr(city_proper , """, "", .)
+replace city_proper = subinstr(city_proper , """, "", .)
+egen S = sieve(city_proper), keep(alphabetic space)
+rename  city_proper S3
+rename S city_proper
+reclink paper_proper state_proper city_proper using /Users/seokminoh/Desktop/Dell_2/na_papers_50_72.dta_V1, idmaster(id3) idusing(number) gen(match) minscore(.99)
+save "/Users/seokminoh/Desktop/Dell_2/reclink_V1",replace
