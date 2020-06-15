@@ -26,6 +26,8 @@ split city, p("]")
 split city1, p(",")
 replace city = city11 + "]"
 drop city1*
+* replace missing to empty strings
+replace city="" if city == "[]"
 
 *** Clean title_normal
 replace title_normal = subinstr(title_normal, "-", " ",.)
@@ -46,12 +48,27 @@ replace alt_title = subinstr(alt_title, "]", "",.)
 replace alt_title = strtrim(alt_title)
 replace alt_title = lower(alt_title)
 
+*** Gen city+title_normal for fuzzy merging 
+g city_and_titlenormal = city
+
+replace city_and_titlenormal = subinstr(city_and_titlenormal, "['", "",.)
+replace city_and_titlenormal = subinstr(city_and_titlenormal, "']", "",.)
+replace city_and_titlenormal = city_and_titlenormal + " " + title_normal
+
+*** Gen city+alt_title for fuzzy merging 
+g city_and_alttitle = city
+replace city_and_alttitle = subinstr(city_and_alttitle, "['", "",.)
+replace city_and_alttitle = subinstr(city_and_alttitle, "']", "",.)
+replace city_and_alttitle = city_and_alttitle + " " + alt_title
+
+*** Gen id for fuzzy merging
+gen id_loc = _n
+
 *** Recast to enable later merging
 recast str300 title_normal alt_title
-format %24s state city title_normal alt_title
-*** Gen id for fuzzy merging
-gen id1 = _n
+format %24s state city title_normal alt_title city_and_alttitle city_and_titlenormal
 save ca_newspaper_data.dta, replace
+
 
 *----------- 1. merge on title_normal -----------*
 
@@ -179,32 +196,61 @@ use unmatched_by_alt&normal.dta, clear
 gen id2 = _n
 rename alt_title title_normal
 replace title_normal = title_normal + "."
-reclink city state title_normal using ca_newspaper_data.dta , idmaster(id2) idusing(id1) gen(matching) required(city state)  minscore(.99)
+reclink city state title_normal using ca_newspaper_data.dta , idmaster(id2) idusing(id_loc) gen(matching) required(city state)  minscore(.99)
 format %24s state city title_normal 
+sort id2 matching
 * Keep unmatched
 keep if matching==.
 keep state city title_normal
 save unmatched_first_fuzzy.dta, replace
 
-
-*------------ 6. Fuzzy merge on alt_title, required perfect match on city & state and min score of 0.99
+*------------ 6. Fuzzy merge on city_and_titlenormal, required perfect match on city & state and min score of 0.97
 clear all
 use unmatched_first_fuzzy.dta, clear
 
 gen id2 = _n
-rename title_normal alt_title
-** Remove dots since alt_title in ca_newspaper doesn't have dots
-replace alt_title = subinstr(alt_title, ".", "",.)
-
-reclink city state alt_title using ca_newspaper_data.dta , idmaster(id2) idusing(id1) gen(matching) required(city state)  minscore(.99)
-format %24s state city alt_title 
+rename title_normal city_and_titlenormal
+reclink city state city_and_titlenormal using ca_newspaper_data.dta , idmaster(id2) idusing(id_loc) gen(matching) required(city state)  minscore(.97)
+format %24s state city city_and_titlenormal 
+sort id2 matching
 * Keep unmatched
 keep if matching==.
-keep state city alt_title
+keep state city city_and_titlenormal
 save unmatched_second_fuzzy.dta, replace
 
 
 
+*------------ 7. Fuzzy merge on alt_title, required perfect match on city & state and min score of 0.99
+clear all
+use unmatched_second_fuzzy.dta, clear
+
+gen id2 = _n
+rename city_and_titlenormal alt_title 
+** Remove dots since alt_title in ca_newspaper doesn't have dots
+replace alt_title = subinstr(alt_title, ".", "",.)
+
+reclink city state alt_title using ca_newspaper_data.dta , idmaster(id2) idusing(id_loc) gen(matching) required(city state)  minscore(.99)
+format %24s state city alt_title 
+* Keep unmatched
+keep if matching==.
+keep state city alt_title
+save unmatched_third_fuzzy.dta, replace
+
+*------------ 8. Fuzzy merge on city_and_alt_title, required perfect match on city & state and min score of 0.985
+clear all
+use unmatched_third_fuzzy.dta, clear
+
+gen id2 = _n
+rename alt_title city_and_alttitle 
+** Remove dots since alt_title in ca_newspaper doesn't have dots
+replace city_and_alttitle = subinstr(city_and_alttitle, ".", "",.)
+
+reclink city state city_and_alttitle using ca_newspaper_data.dta , idmaster(id2) idusing(id_loc) gen(matching) required(city state)  minscore(.985)
+format %24s state city city_and_alttitle 
+* Keep unmatched
+keep if matching==.
+keep state city city_and_alttitle
+save unmatched_forth_fuzzy.dta, replace
 
 
 
@@ -213,7 +259,10 @@ save unmatched_second_fuzzy.dta, replace
 
 
 
-*------------  7. NOT DONE YET
+
+
+
+*------------   NOT DONE YET - DRAFT
 clear all
 use unmatched_second_fuzzy.dta, clear
 gen id2 = _n
