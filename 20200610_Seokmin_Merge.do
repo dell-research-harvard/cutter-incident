@@ -1,8 +1,8 @@
-//06/08/2020
+//06/16/20
 ssc install distinct
 ssc install egenmore
 
-**** STEP 1: IMPORT THE FILES  ****
+**** STEP 1: IMPORTT THE FILES  ****
  
 /*
 import delimited "/Users/seokminoh/Downloads/ca_newspaper_data.csv"
@@ -247,26 +247,29 @@ save  "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", replace
 *** STEP 8: RECLINK - fuzzy merge using the titles we are given with the cityout name in front and requiring state and city to match***
 
 //get the using data ready 
-use "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", replace
+use "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", clear
 rename city city_using
 rename state state_using
-// replace paper_proper = city_using + paper_proper if cityinpaper > 0
+replace paper_proper = city_using + paper_proper if cityinpaper > 0
 rename _merge _unmatchedBeforeReclink
 
 //make format consistent
 //replace state_proper = substr(state_proper, 3, .)
 replace state_proper = subinstr(state_proper , "(", "", .)
 replace state_proper = subinstr(state_proper , ")", "", .)
-replace state_proper = subinstr(state_proper , "['", "", .)
-replace state_proper = subinstr(state_proper , "']", "", .)
+replace state_proper = subinstr(state_proper , "[", "", .)
+replace state_proper = subinstr(state_proper , "]", "", .)
+replace state_proper = subinstr(state_proper , "'", "", .)
 
 //replace city_proper = substr(city_proper, 3, .)
 replace city_proper = subinstr(city_proper , "(", "", .)
 replace city_proper = subinstr(city_proper , ")", "", .)
-replace city_proper = subinstr(city_proper , "['", "", .)
-replace city_proper = subinstr(city_proper , "']", "", .)
+replace city_proper = subinstr(city_proper , "[", "", .)
+replace city_proper = subinstr(city_proper , "]", "", .)
+replace city_proper = subinstr(city_proper , "'", "", .)
 
-save "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", replace
+keep city_proper state_proper paper_proper
+save "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink2", replace
 
 //reformat the master file such that it is compatible for reclink
 use "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink", replace
@@ -278,8 +281,8 @@ drop if paper_proper == ""
 replace state_proper = subinstr(state_proper , "(", "", .)
 replace state_proper = subinstr(state_proper , ")", "", .)
 replace state_proper = subinstr(state_proper , "'", "", .)
-replace state_proper = subinstr(state_proper , "['", "", .)
-replace state_proper = subinstr(state_proper , "']", "", .)
+replace state_proper = subinstr(state_proper , "[", "", .)
+replace state_proper = subinstr(state_proper , "]", "", .)
 replace state_proper = strtrim(state_proper)
 
 //replace city_proper = substr(city_proper, 3, .)
@@ -301,13 +304,31 @@ replace paper_proper = subinstr(paper_proper , char(34), "", .)
 
 
 save "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", replace
-// 
-use "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", replace
-drop if 
-//you now have 39 less mismatches 
-reclink paper_proper state_proper city_proper using /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink, idmaster(id3) idusing(number) gen(match_score) required(state_proper) minscore(.99)
+replace state_proper = subinstr(state_proper , "[", "", .)
+replace state_proper = subinstr(state_proper , "]", "", .)
+save "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", replace
 
-save 
+
+use "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", clear
+
+use /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink, clear
+gen number = _n
+save /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink, replace
+
+use "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", clear
+
+use /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink, clear
+//you now have around 100 less mismatches - need checking 
+reclink paper_proper state_proper city_proper  using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", idmaster(number) idusing(id3) gen(match_score)  _merge(_merge) minscore(.99)
+save "/Users/seokminoh/Desktop/Dell_2/reclink_Leander", replace
+
+//this was with minscore of .6 only one did not match
+save "/Users/seokminoh/Desktop/Dell_2/reclink_Initial", replace
+
+
+save "/Users/seokminoh/Desktop/Dell_2/reclink_withOren", replace
+
+
 use "/Users/seokminoh/Desktop/Dell_2/Reclink_Merged_Step8", replace
 keep if paper == ""
 rename _merge _mergeReclinkInitial
