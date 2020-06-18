@@ -1,4 +1,5 @@
 //06/16/20
+cd /Users/seokminoh/Desktop/Dell_2/
 ssc install distinct
 ssc install egenmore
 
@@ -248,9 +249,9 @@ save  "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", replace
 
 //get the using data ready 
 use "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", clear
-rename city city_using
-rename state state_using
-replace paper_proper = city_using + paper_proper if cityinpaper > 0
+//rename city city_using
+//rename state state_using
+//replace paper_proper = paper_proper if cityinpaper > 0
 rename _merge _unmatchedBeforeReclink
 
 //make format consistent
@@ -268,7 +269,7 @@ replace city_proper = subinstr(city_proper , "[", "", .)
 replace city_proper = subinstr(city_proper , "]", "", .)
 replace city_proper = subinstr(city_proper , "'", "", .)
 
-keep city_proper state_proper paper_proper
+keep city_proper state_proper paper_proper number 
 save "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink2", replace
 
 //reformat the master file such that it is compatible for reclink
@@ -301,53 +302,18 @@ replace paper_proper = subinstr(paper_proper , "'", "", .)
 replace paper_proper = strtrim(paper_proper)
 
 replace paper_proper = subinstr(paper_proper , char(34), "", .)
-
-
-save "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", replace
-replace state_proper = subinstr(state_proper , "[", "", .)
-replace state_proper = subinstr(state_proper , "]", "", .)
 save "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", replace
 
+use /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink2, clear
+//you now have around 79 additional matches (check _merge = 3)  
+reclink paper_proper state_proper city_proper  using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", idmaster(number) idusing(id3) gen(match_score)  _merge(_merge_Reclink) minscore(.99)
+save "/Users/seokminoh/Desktop/Dell_2/reclink_Leander2", replace
 
-use "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", clear
 
-use /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink, clear
-gen number = _n
-save /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink, replace
 
-use "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", clear
-
-use /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink, clear
-//you now have around 100 less mismatches - need checking 
-reclink paper_proper state_proper city_proper  using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", idmaster(number) idusing(id3) gen(match_score)  _merge(_merge) minscore(.99)
-save "/Users/seokminoh/Desktop/Dell_2/reclink_Leander", replace
 
 //this was with minscore of .6 only one did not match
 save "/Users/seokminoh/Desktop/Dell_2/reclink_Initial", replace
 
 
-save "/Users/seokminoh/Desktop/Dell_2/reclink_withOren", replace
-
-
-use "/Users/seokminoh/Desktop/Dell_2/Reclink_Merged_Step8", replace
-keep if paper == ""
-rename _merge _mergeReclinkInitial
-save "/Users/seokminoh/Desktop/Dell_2/Reclink_unmatched_Step8", replace
-
-//get rid of the 39 unique ones that did match
-//also, this was checked manually and it seems that these are fine. 
-use "/Users/seokminoh/Desktop/Dell_2/Reclink_Merged_Step8", replace
-duplicates tag  number, gen(duprec1)
-keep if paper != "" & duprec1 >0 & _unmatchedBeforeReclink != 3
-remame _merge _mergeReclinkInitial
-save "/Users/seokminoh/Desktop/Dell_2/Reclink_Step8_Merged_unique", replace
-
-
-*** STEP 9: Manual Coding - I will now manually seek to figure out which ones in na file corresponds with the ones in ca file ***
-
-//since I was unable to get a matching score (for some reason?) and the above code does not tell me what was in the using data, I will manuallly have to merge again with the previous data
-use "/Users/seokminoh/Desktop/Dell_2/Reclink_unmatched_Step8", replace
-merge 1:1 id3 paper_proper city_proper state_proper using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2"
-
-//now sort them by paper_proper state_proper city_proper 
 
