@@ -54,7 +54,7 @@ replace paper_proper = "le-mars-semi-weekly-sentinel" if paper ==  "lemars-semi-
 replace paper_proper = "le-mars-sentinel" if paper == "le-mars-sentinel" 
 replace paper_proper = "le-mars-globe-post" if paper =="le-mars-globe-post"
 replace paper_proper = "le-mars-daily-sentinel" if paper == "le-mars-daily-sentinel"
-//
+
 save  "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72_Final.dta",replace
 
 *** STEP 3: FORMAT THE BIGGER FILE ***
@@ -245,7 +245,7 @@ save  "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", replace
 
 
 
-*** STEP 8: RECLINK - fuzzy merge using the titles we are given with the cityout name in front and requiring state and city to match***
+*** STEP 8: RECLINK - fuzzy merge using the titles we are given without the city name in front and requiring state and city to match***
 
 //get the using data ready 
 use "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink", clear
@@ -269,7 +269,7 @@ replace city_proper = subinstr(city_proper , "[", "", .)
 replace city_proper = subinstr(city_proper , "]", "", .)
 replace city_proper = subinstr(city_proper , "'", "", .)
 
-keep city_proper state_proper paper_proper number 
+keep city_proper state_proper paper_proper number cityinpaper
 save "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink2", replace
 
 //reformat the master file such that it is compatible for reclink
@@ -302,18 +302,253 @@ replace paper_proper = subinstr(paper_proper , "'", "", .)
 replace paper_proper = strtrim(paper_proper)
 
 replace paper_proper = subinstr(paper_proper , char(34), "", .)
+rename cityinpaper cityinpaperMaster
 save "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", replace
 
 use /Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink2, clear
-//you now have around 79 additional matches (check _merge = 3)  
+//you now have around 125 additional matches (check _merge = 3)  
 reclink paper_proper state_proper city_proper  using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", idmaster(number) idusing(id3) gen(match_score)  _merge(_merge_Reclink) minscore(.99)
 save "/Users/seokminoh/Desktop/Dell_2/reclink_Leander2", replace
 
+*** 8.1 manually check and analyze the matches to see if they were legitimate.
+*** NOTE: Suppose I saw a repetition of either ca or na files, I only included the ones that were identitical as matched. If not, I left them as unmatched for now and will change them later. 
+use "/Users/seokminoh/Desktop/Dell_2/reclink_Leander2", replace
+keep if _merge_Reclink == 3 
+
+gen unmatched = 0
+
+//create a crosswalk now. The way you do this is going to be by inspecting by looking at the names of the paper, city, and state, and seeing if they are reasonable. 
+//check the "notes" variable
+keep lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title city state unmatched
+
+//this file was later renamed as Reclink_V1
+export excel using "Reclink_Leander.xlsx", firstrow(variables) replace 
+
+//create a file of the unmatched observations 
+import excel "/Users/seokminoh/Desktop/Dell_2/Reclink_V1.xlsx", sheet("Sheet1") firstrow clear
+save Reclink_V1_Initial, replace
+
+//get rid of duplicates
+use Reclink_V1_Initial, clear
+duplicates tag  lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title city state unmatched, gen(dup_rec_initial)
+
+bysort lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title city state unmatched: gen dup_rec_initial2 = _n
+//since they are duplicates by literally every single variable, it should be fine to drop 
+drop if dup_rec_initial2 > 1
 
 
+save "/Users/seokminoh/Desktop/Dell_2/Reclink_V1_Initial", replace
 
-//this was with minscore of .6 only one did not match
-save "/Users/seokminoh/Desktop/Dell_2/reclink_Initial", replace
+use "/Users/seokminoh/Desktop/Dell_2/reclink_Leander2", replace
+merge m:1 lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper   using Reclink_V1_Initial
+save "/Users/seokminoh/Desktop/Dell_2/Reclink_Initial_Merged", replace
+drop if unmatched == 0
+//File of unmatched
+//also refer to excel sheet for notes and have it all somewhere.
+bysort number: gen dup_reclinkMergeInitial = _n
+drop if dup_reclinkMergeInitial> 1
+save "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_Initial", replace
+
+//File to Append
+use "/Users/seokminoh/Desktop/Dell_2/Reclink_Initial_Merged", replace
+keep if unmatched == 0
+save "/Users/seokminoh/Desktop/Dell_2/To_Append_Reclink_Initial_Merged", replace
+
+*** STEP 9 - Reclink Part 2. Here I will add the city name in front of the smaller file if the city name for those that were never in the front. Then, I will fuzzy merge. If they look reasonably the same, I consider them to be same. 
+
+//first get the small file ready 
+use "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_Initial", replace
+rename _merge mergeReclinkInitial
+drop cityinpaper
+merge 1:1 number using "/Users/seokminoh/Desktop/Dell_2/Merge_nocity_for_reclink2"
+keep if _merge == 3
+keep city_proper state_proper paper_proper cityinpaper notes* number
+replace paper_proper = city_proper + paper_proper if cityinpaper == 0
+save "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_with_cityname", replace
+
+//now merge
+use  "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_with_cityname", replace
+reclink paper_proper state_proper city_proper  using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", idmaster(number) idusing(id3) gen(match_score)  _merge(_merge_Reclink_cityname) minscore(.99)
+
+save "/Users/seokminoh/Desktop/Dell_2/Merged_Reclink_with_cityname", replace
+gen unmatched = 0
+keep if _merge_Reclink_cityname == 3
 
 
+//create a crosswalk now. The way you do this is going to be by inspecting by looking at the names of the paper, city, and state, and seeing if they are reasonable. 
+//check the "notes" variable
+keep lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title  cityinpaper unmatched
 
+//this file was later renamed as Reclink_V1
+export excel using "Reclink_V1.xlsx", sheet(Reclink_with_cityname) firstrow(variables) sheetreplace 
+
+//now import this new file 
+import excel Reclink_V1.xlsx, sheet("Reclink_with_cityname") firstrow clear
+save Reclink_with_cityname, replace
+
+//get rid of duplicates
+use Reclink_with_cityname, clear
+duplicates tag  lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title  unmatched, gen(dup_rec_cityname)
+
+bysort number paper_proper city_proper   unmatched: gen dup_rec_cityname2 = _n
+//since they are duplicates by literally every single variable, it should be fine to drop 
+drop if dup_rec_cityname2 > 1
+tostring multiple_merge_na, replace
+rename unmatched unmatched_cityname
+drop cityinpaper
+save  "/Users/seokminoh/Desktop/Dell_2/Reclink_with_cityname", replace
+
+use "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_Initial", clear
+rename _merge mergeReclinkInitial
+merge 1:m  number   using Reclink_with_cityname
+save "/Users/seokminoh/Desktop/Dell_2/Reclink_cityname_Merged", replace
+drop if unmatched_cityname == 0
+//File of unmatched
+
+//also refer to excel sheet for notes and have it all somewhere.
+//new tomerge file 
+bysort number: gen dup_reclinkMergecityname = _n
+drop if dup_reclinkMergecityname> 1
+rename _merge _mergecitynamesome
+save  "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_cityname", replace
+
+//File to Append
+use "/Users/seokminoh/Desktop/Dell_2/Reclink_cityname_Merged", replace
+keep if unmatched_cityname == 0
+save "/Users/seokminoh/Desktop/Dell_2/To_Append_Reclink_cityname_Merged", replace
+
+*** STEP 10: Try fuzzy merge again but with a lower minimum score. Also, now, make sure it is the same name as the original file. 
+
+//first get the small file ready by making the paper name same as the original file
+use  "/Users/seokminoh/Desktop/Dell_2/na_papers_50_72_Final.dta",replace
+rename city_proper cityoriginalmerge
+rename state_proper stateoriginalmerge
+rename paper_proper usethispapername
+save   "/Users/seokminoh/Desktop/Dell_2/Getting_small_file_origname.dta",replace
+merge 1:1 number using  "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_cityname"
+keep if _merge == 3 
+rename paper_proper paper_nameold
+rename usethispapername paper_proper 
+save "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_originalpapername", replace
+
+//reclink with match score of .95
+use "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_originalpapername", clear
+keep city_proper state_proper paper_proper cityinpaper notes* number
+reclink paper_proper state_proper city_proper  using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", idmaster(number) idusing(id3) gen(match_score_citynameog)  minscore(.95)
+save  "/Users/seokminoh/Desktop/Dell_2/Merged_reclink_originalpapername", replace
+gen unmatched_origpaper = 0
+keep if _merge == 3
+
+//create a crosswalk now. The way you do this is going to be by inspecting by looking at the names of the paper, city, and state, and seeing if they are reasonable. 
+//check the "notes" variable
+keep lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title  cityinpaper unmatched_origpaper 
+
+//this file was later renamed as Reclink_V1
+export excel using "Reclink_V1.xlsx", sheet(Reclink_with_originalpaper) firstrow(variables) sheetreplace 
+
+//now import this new file 
+import excel Reclink_V1.xlsx, sheet("Reclink_with_originalpaper") firstrow clear
+save Reclink_with_originalpaper, replace
+
+//get rid of duplicates
+use Reclink_with_originalpaper, clear
+//duplicates tag  lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title  unmatched, gen(dup_rec_original)
+
+bysort number : gen dup_rec_original2 = _n
+//since they are duplicates by literally every single variable, it should be fine to drop 
+drop if dup_rec_original2 > 1
+tostring multiple_merge_na, replace
+rename paper_proper paper_orig
+rename city_proper city_orig
+rename state_proper state_orig
+save  "/Users/seokminoh/Desktop/Dell_2/Reclink_with_originalpaper", replace
+
+use "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_cityname", clear
+//rename _merge mergeReclinkcity
+merge 1:m  number  using Reclink_with_originalpaper
+save "/Users/seokminoh/Desktop/Dell_2/Reclink_cityorig_Merged", replace
+drop if unmatched_orig == 0
+//File of unmatched
+
+//also refer to excel sheet for notes and have it all somewhere.
+//new tomerge file 
+bysort number: gen dup_reclinkMergeorigcity = _n
+drop if dup_reclinkMergeorigcity> 1
+rename _merge _mergeorigcity
+save  "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_origcity", replace
+
+//File to Append
+use "/Users/seokminoh/Desktop/Dell_2/Reclink_with_originalpaper", replace
+keep if unmatched_origpaper == 0
+save "/Users/seokminoh/Desktop/Dell_2/To_Append_Reclink_cityname_Merged", replace
+
+*** STEP 11: Fuzzy merge one last time, where I merge with citynames in front of all and merge on state and paper name rather than city as well. Require states to be the same.
+
+//first get the small file ready by making the paper name same as the original file
+use   "/Users/seokminoh/Desktop/Dell_2/Getting_small_file_origname.dta",replace
+merge 1:1 number using  "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_origcity"
+keep if _merge == 3 
+rename paper_proper paper_nameold
+rename usethispapername paper_proper 
+drop cityinpaper 
+gen cityinpaper = strpos(paper_proper,city_proper)
+replace paper_proper = city_proper +paper_proper if cityinpaper == 0 & city_proper !="" & paper_proper != ""
+save "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_og_for_Master", replace
+
+//Make the masterfile also have city name in front of all of papers for those that do not have city names in the paper at all  
+use "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_2", clear
+gen cityinpaper = strpos(paper_proper,city_proper)
+gen paper_properx = city_proper +paper_proper if cityinpaper == 0 & city_proper !="" & paper_proper != ""
+rename paper_proper paper_proper_old
+rename paper_properx paper_proper
+rename city_proper cityUsing_Master
+save "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_citynameinfront", replace
+
+//now reclink with relatively low min score
+use "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_og_for_Master", clear
+keep city_proper state_proper paper_proper cityinpaper notes* number
+reclink paper_proper state_proper  using "/Users/seokminoh/Desktop/Dell_2/Master_for_reclink_citynameinfront", idmaster(number) idusing(id3) gen(match_score_citynameog)  minscore(.95) req(state_proper)
+save  "/Users/seokminoh/Desktop/Dell_2/Merged_reclink_master_cityinfront", replace
+gen unmatched_Mastercityname = 0
+keep if _merge == 3
+
+//this file was later renamed as Reclink_V1
+keep lccn number paper_proper city_proper state_proper Upaper_proper cityUsing_Master Ustate_proper alt_title  cityinpaper unmatched_Mastercityname 
+export excel using "Reclink_V1.xlsx", sheet(Reclink_with_mastercityname) firstrow(variables) sheetreplace 
+
+//now import this new file 
+import excel Reclink_V1.xlsx, sheet("Reclink_with_mastercityname") firstrow clear
+drop if number ==.
+save Reclink_with_mastercityname, replace
+
+//get rid of duplicates
+use Reclink_with_mastercityname, clear
+//duplicates tag  lccn number paper_proper city_proper state_proper Upaper_proper Ucity_proper Ustate_proper alt_title  unmatched, gen(dup_rec_original)
+
+bysort number : gen dup_rec_og_citymaster = _n
+//since they are duplicates by literally every single variable, it should be fine to drop 
+drop if dup_rec_og_citymaster > 1
+tostring multiple_merge_na, replace
+rename paper_proper paper_masterwithcity
+rename city_proper city_masterwithcity
+rename state_proper state_masterwithcity
+save  "/Users/seokminoh/Desktop/Dell_2/Reclink_with_Mastercityname", replace
+
+use "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_origcity", clear
+//rename _merge mergeReclinkcity
+merge 1:m  number  using Reclink_with_Mastercityname
+save "/Users/seokminoh/Desktop/Dell_2/Merged_Reclink_with_mastercityname", replace
+drop if unmatched_Mastercityname == 0
+//File of unmatched
+
+//also refer to excel sheet for notes and have it all somewhere.
+//new tomerge file 
+bysort number: gen dup_reclinkMasterwithcityname = _n
+drop if dup_reclinkMasterwithcityname> 1
+rename _merge _mergemasterwithcityname
+save  "/Users/seokminoh/Desktop/Dell_2/To_Merge_Reclink_mastercityname", replace
+
+//File to Append
+use "/Users/seokminoh/Desktop/Dell_2/Merged_Reclink_with_mastercityname", replace
+keep if unmatched_Mastercityname == 0
+save "/Users/seokminoh/Desktop/Dell_2/To_Append_Reclink_cityname_Merged", replace
