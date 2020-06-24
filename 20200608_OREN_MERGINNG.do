@@ -1,8 +1,7 @@
 clear all
 cd "C:\Users\Oren_PC\Dropbox\BLISS\raw_data"
 
-
-*-------- Part 1:  Cleaning the LOC file for merging -------*
+*-------- Part 1:  Cleaning the LOC & NA files for merging -------*
 import delimited ca_newspaper_data.csv, varnames(1) clear
 
 *** Gen copies of city, state and title_normal
@@ -34,6 +33,7 @@ replace title_normal = subinstr(title_normal, "-", " ",.)
 replace title_normal = subinstr(title_normal, ",", "",.)
 replace title_normal = subinstr(title_normal, "'", "",.)
 replace title_normal = subinstr(title_normal, "/", "",.)
+replace title_normal = subinstr(title_normal, ".", "",.)
 
 *** Get the first alternative title 
 split alt_title, p(",")
@@ -50,9 +50,10 @@ replace alt_title = lower(alt_title)
 
 *** Gen city+title_normal for fuzzy merging 
 g city_and_titlenormal = city
-
+* Extract city name
 replace city_and_titlenormal = subinstr(city_and_titlenormal, "['", "",.)
 replace city_and_titlenormal = subinstr(city_and_titlenormal, "']", "",.)
+* Add title_normal
 replace city_and_titlenormal = city_and_titlenormal + " " + title_normal
 
 *** Gen city+alt_title for fuzzy merging 
@@ -69,26 +70,18 @@ recast str300 title_normal alt_title
 format %24s state city title_normal alt_title city_and_alttitle city_and_titlenormal
 save ca_newspaper_data.dta, replace
 
-
-*------------Part 2:  Regular Merge--------------*
-
-*----------- Step 1 - merge on title_normal -----------*
-
+*------- Clean na_papers_50_72 -------*
 clear all
 import delimited na_papers_50_72.csv, varnames(1) clear
 
 *** generate a unique identifier 
 g id_na = _n
-*** keep 1118 - 2235 obs.
-keep if id_na > 1117 
 
 *** Generate formatted variables
 
 *** Papers' titles
 g formatted_paper = paper
 replace formatted_paper = subinstr(formatted_paper, "-", " ",.)
-* Add a dot to match ca_newspaper_data
-replace formatted_paper = formatted_paper + "."
 
 *** State Names
 g formatted_state = proper(state)
@@ -109,6 +102,15 @@ rename formatted_state state
 rename formatted_city city
 rename formatted_paper title_normal
 
+save na_papers_cleaned.dta, replace
+
+*-------------------Part 2:  Regular Merge ----------------*
+
+*----------- Step 1 - merge on title_normal -----------*
+use na_papers_cleaned.dta, clear
+*** keep 1118 - 2235 obs.
+keep if id_na > 1117 
+
 *** merge by city, state and title_normal
 merge 1:m city state title_normal using ca_newspaper_data.dta
 
@@ -116,7 +118,7 @@ merge 1:m city state title_normal using ca_newspaper_data.dta
 preserve
 keep if _merge==3
 drop _merge
-* mark step 1
+* mark that this merge belongs to step 1
 g step = 1
 save merged.dta, replace
 restore
@@ -147,7 +149,6 @@ replace title_normal = strtrim(title_normal)
 sort city state title_normal
 quietly by city state title_normal:  gen dup = cond(_N==1,0,_n)
 replace title_normal = title_normal1 + " " + title_normal if dup!=0
-///////////drop alt_title*
 drop dup 
 sort city state title_normal
 quietly by city state title_normal:  gen dup = cond(_N==1,0,_n)
@@ -176,8 +177,6 @@ save unmatched_by_titlenormal.dta, replace
 clear all
 use unmatched_by_titlenormal.dta, clear
 
-** Remove dots since alt_title in ca_newspaper doesn't have dots
-replace title_normal = subinstr(title_normal, ".", "",.)
 ** Rename for merging
 rename title_normal alt_title
 
@@ -194,6 +193,7 @@ g step = 3
 append using merged.dta
 save merged.dta, replace
 restore
+
 *** Save unmatched in a seperate file
 keep if _merge==1
 keep city state title_normal_copy id_na  original_na_paper
@@ -205,9 +205,6 @@ use unmatched_by_alt&normal.dta, clear
 
 ** Rename full title for merging
 rename  title_normal_copy alt_title
-
-** Remove dots since alt_title in ca_newspaper doesn't have dots
-replace alt_title = subinstr(alt_title, ".", "",.)
 
 *** merge by city, state and title
 merge 1:m city state alt_title using ca_newspaper_data.dta
@@ -226,14 +223,14 @@ keep if _merge==1
 keep city state alt_title id_na  original_na_paper
 save unmatched_by_alt&normal.dta, replace
 
+*----------Part 3: Fuzzy Merges---------*
 
-*------------ 5. Fuzzy merge on title_normal, required perfect match on city & state and min score of 0.99
+*------------ Step 5 - Fuzzy merge on title_normal, required perfect match on city & state and min score of 0.99
 clear all
 use unmatched_by_alt&normal.dta, clear
 
 gen id2 = _n
 rename alt_title title_normal
-replace title_normal = title_normal + "."
 
 reclink city state title_normal using ca_newspaper_data.dta , idmaster(id2) idusing(id_loc) gen(matching) required(city state)  minscore(.99)
 format %24s state city title_normal 
@@ -264,7 +261,7 @@ keep if matching==. | _merge == 3
 keep state city title_normal id_na original_na_paper
 save unmatched_first_fuzzy.dta, replace
 
-*------------ 6. Fuzzy merge on city_and_titlenormal, required perfect match on state and min score of 0.97
+*------------ Step 6 - Fuzzy merge on city_and_titlenormal, required perfect match on state and min score of 0.97
 clear all
 use unmatched_first_fuzzy.dta, clear
 
@@ -301,14 +298,12 @@ keep state city city_and_titlenormal id_na original_na_paper
 save unmatched_second_fuzzy.dta, replace
 
 
-*------------ 7. Fuzzy merge on alt_title, required perfect match on state and min score of 0.99
+*------------ Step 7 - Fuzzy merge on alt_title, required perfect match on state and min score of 0.99
 clear all
 use unmatched_second_fuzzy.dta, clear
 
 gen id2 = _n
 rename city_and_titlenormal alt_title 
-** Remove dots since alt_title in ca_newspaper doesn't have dots
-replace alt_title = subinstr(alt_title, ".", "",.)
 
 reclink city state alt_title using ca_newspaper_data.dta , idmaster(id2) idusing(id_loc) gen(matching) required(state)  minscore(.99)
 format %24s state city alt_title 
@@ -341,6 +336,7 @@ keep if matching==. | _merge == 3
 keep state city alt_title id_na original_na_paper
 save unmatched_third_fuzzy.dta, replace
 
+*--------------- Part 4: Manual Merges---------*
 
 ***----------8. Load manual-mergeing of unmatched obs-------------
 clear all
