@@ -435,7 +435,7 @@ save unmatched_step_7.dta, replace
 ***----------8. Load manual-mergeing of unmatched obs-------------
 clear all
 * Load manual-merge checkings
-import delimited manual_crosswalk.csv, encoding(UTF-8) clear
+import excel Fuzzy_merged_obs.xlsx, sheet("step_8") firstrow clear
 keep id_na sn title_na school notes
 save manual_crosswalk.dta, replace
 use manual_crosswalk.dta, clear
@@ -445,7 +445,7 @@ merge m:1 id using ca_newspaper_data.dta
 *** Save matched
 preserve
 keep if _merge==3
-drop _merge
+drop _merge school
 * mark step 8
 g step = 8
 rename title_na original_na_paper
@@ -458,6 +458,7 @@ keep if _merge==1
 keep city state id_na title_na school notes
 save unmatched_final.dta, replace
  
+<<<<<<< HEAD
 
 >>>>>>> Oren's_first_branch
 
@@ -492,6 +493,9 @@ reclink city state city_and_titlenormal using ca_newspaper_data.dta , idmaster(i
 format %24s state city title_normal 
 sort id2 matching
 =======
+=======
+ 
+>>>>>>> Oren's_first_branch
 *--------------------clean merged --------------
 *** regular merge
 use merged.dta, clear
