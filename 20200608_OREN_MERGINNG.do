@@ -124,7 +124,7 @@ save merged.dta, replace
 restore
 *** Save unmatched in a seperate file
 keep if _merge==1
-keep city state title_normal id_na  original_na_paper
+keep city state title_normal id_na  original_na_paper original_na_city original_na_state
 save unmatched_step_1.dta, replace
 
 *------------ Step 2 - Merge on title_normal without first word in na_papers_50_72 -----------*
@@ -148,12 +148,12 @@ replace title_normal = strtrim(title_normal)
 *** Add first word back to duplicates
 sort city state title_normal
 quietly by city state title_normal:  gen dup = cond(_N==1,0,_n)
-replace title_normal = title_normal1 + " " + title_normal if dup!=0
+replace title_normal = title_normal_copy if dup > 0
 drop dup 
 sort city state title_normal
 quietly by city state title_normal:  gen dup = cond(_N==1,0,_n)
-///////////////////////// come back to this, should not delete //////////////////////
-drop if dup!=0
+replace title_normal = title_normal_copy if dup > 0
+drop dup 
 
 *** merge by city, state and title
 merge 1:m city state title_normal using ca_newspaper_data.dta
@@ -169,7 +169,7 @@ save merged.dta, replace
 restore
 *** Save unmatched in the seperate file
 keep if _merge==1
-keep city state title_normal title_normal_copy id_na  original_na_paper
+keep city state title_normal title_normal_copy id_na  original_na_paper original_na_city original_na_state
 save unmatched_step_2.dta, replace
 
 *----------- Step 3 - merge on alt_title without the first word which is usually a city name-----------*
@@ -194,8 +194,13 @@ save merged.dta, replace
 restore
 
 *** Save unmatched in a seperate file
-keep if _merge==1
-keep city state title_normal_copy id_na  original_na_paper
+keep if _merge==1 | (_merge==3 & missing(alt_title))
+*** delete duplicates that were created because of missing alt_title
+sort id_na
+quietly by id_na:  gen dup = cond(_N==1,0,_n)
+drop if dup>1
+
+keep city state title_normal_copy id_na  original_na_paper original_na_city original_na_state
 save unmatched_step_3.dta, replace
 
 *----------- Step 4 - merge on alt_title -----------*
@@ -219,7 +224,7 @@ save merged.dta, replace
 restore
 *** Save unmatched in a seperate file
 keep if _merge==1
-keep city state alt_title id_na  original_na_paper
+keep city state alt_title id_na  original_na_paper original_na_city original_na_state
 save unmatched_step_4.dta, replace
 
 *----------Part 3: Fuzzy Merges---------*
@@ -258,7 +263,12 @@ save merged.dta, replace
 restore
 * Keep unmatched and wrong matches
 keep if matching==. | _merge == 3
-keep state city title_normal id_na original_na_paper
+*** delete duplicates that were created because of a wrong_match
+sort id_na
+quietly by id_na:  gen dup = cond(_N==1,0,_n)
+drop if dup>1
+
+keep state city title_normal id_na original_na_paper original_na_city original_na_state
 save unmatched_step_5.dta, replace
 
 *------------ Step 6 - Fuzzy merge on city_and_titlenormal, required perfect match on state and min score of 0.97
@@ -294,7 +304,7 @@ save merged.dta, replace
 restore
 * Keep unmatched and wrong matches
 keep if matching==. | _merge == 3
-keep state city city_and_titlenormal id_na original_na_paper
+keep state city city_and_titlenormal id_na original_na_paper original_na_city original_na_state
 save unmatched_step_6.dta, replace
 
 
@@ -333,7 +343,7 @@ restore
 
 * Keep unmatched and wrong matches
 keep if matching==. | _merge == 3
-keep state city alt_title id_na original_na_paper
+keep state city alt_title id_na original_na_paper original_na_city original_na_state
 save unmatched_step_7.dta, replace
 
 *--------------- Part 4: Manual Merges---------*
@@ -344,10 +354,12 @@ save unmatched_step_7.dta, replace
 clear all
 * Load manual-merge checkings
 import excel Fuzzy_merged_obs.xlsx, sheet("step_8") firstrow clear
-keep id_na sn title_na school notes
-save manual_crosswalk.dta, replace
-use manual_crosswalk.dta, clear
-rename sn id
+
+keep id_na id school RA_notes 
+merge 1:1 id_na using na_papers_cleaned.dta
+keep if _merge==3
+keep id_na id school RA_notes original_na_city original_na_state original_na_paper
+
 merge m:1 id using ca_newspaper_data.dta
 
 *** Save matched
@@ -356,24 +368,27 @@ keep if _merge==3
 drop _merge school
 * mark step 8
 g step = 8
-rename title_na original_na_paper
 append using merged.dta
 save merged.dta, replace
 restore
 
 *** Save unmatched in a seperate file
 keep if _merge==1
-keep city state id_na title_na school notes
+keep id_na  school RA_notes original_na_city original_na_state
+g merged = 0
 save unmatched_final.dta, replace
  
  
 *--------------------clean merged --------------
 *** regular merge
 use merged.dta, clear
-keep city state original_city original_state original_title_normal original_alt_title id_na id id_loc frequency note  original_na_paper title_normal start_year end_year step
+g merged = 1
+keep city state original_city original_state original_title_normal original_alt_title id_na id id_loc frequency note  original_na_paper  original_na_city original_na_state title_normal start_year end_year step county place_of_publication
 format %24s state city title_normal 
 sort id_na
-quietly by id_na:  gen dup = cond(_N==1,0,_n)
 save merged.dta , replace
+
+
+
 
 
